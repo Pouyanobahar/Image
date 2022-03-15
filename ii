@@ -1,0 +1,94 @@
+trainData = '/content/drive/MyDrive/out5/train'
+validationData = '/content/drive/MyDrive/out5/val'
+csv_logger = CSVLogger("model_history_log.csv", append=True)
+epochs = 500
+steps = 400 
+batch_size = 32
+input_shape = (100,100,3)
+
+model = Sequential()
+model.add(Conv2D(32, (3,3), padding="same", input_shape = input_shape, activation='relu'))
+model.add(MaxPooling2D(pool_size=(2,2)))
+model.add(Conv2D(64, (2,2), padding="same", activation='relu'))
+model.add(MaxPooling2D(pool_size=(2,2)))
+model.add(Flatten())
+model.add(Dense(64, activation='relu'))
+model.add(Dropout(0.5))
+model.add(Dense(6, activation='softmax'))
+  
+model.compile(loss='categorical_crossentropy', optimizer=optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.001), metrics=["accuracy"])
+  
+train_datagen = ImageDataGenerator(rescale = 1. / 255,
+                                   shear_range = 0.3,
+                                   zoom_range = 0.3,
+                                   horizontal_flip = True) 
+  
+test_datagen = ImageDataGenerator(rescale = 1. / 255) 
+
+train_generator = train_datagen.flow_from_directory(
+    trainData,
+     classes = ['STF','ZK2','ZK3','UND','3 tape','ZHK'],  
+    target_size =(100, 100), 
+    batch_size = batch_size, 
+    class_mode ='categorical',
+    shuffle=True) 
+  
+validation_generator = test_datagen.flow_from_directory(
+    validationData,
+     classes = ['STF','ZK2','ZK3','UND','3 tape','ZHK'],  
+    target_size =(100, 100), 
+    batch_size = batch_size, 
+    shuffle=False) 
+
+with tf.device('/gpu:0'):
+    trainingmodel = model.fit_generator(train_generator,
+                                        steps_per_epoch = steps // batch_size,
+                                        epochs = epochs,
+                                        validation_data = validation_generator,
+                                        validation_steps = 200 // batch_size,
+                                        callbacks=[csv_logger,PlotLossesCallback()],
+                                        verbose=1) 
+
+print(model.summary())
+train_STF = os.path.join(trainData, 'STF')
+train_3tape = os.path.join(trainData, '3 tape')
+train_ZHK = os.path.join(trainData, 'ZHK')
+train_ZK2 = os.path.join(trainData, 'ZK2')
+train_ZK3 = os.path.join(trainData, 'ZK3')
+train_UND = os.path.join(trainData, 'UND')
+
+validation_STF = os.path.join(validationData, 'STF')
+validation_3tape = os.path.join(validationData, '3 tape')
+validation_ZHK = os.path.join(validationData, 'ZHK')
+validation_ZK2 = os.path.join(validationData, 'ZK2')
+validation_ZK3 = os.path.join(validationData, 'ZK3')
+validation_UND = os.path.join(validationData, 'UND')
+
+num_STF = len(os.listdir(train_STF))
+num_3tape = len(os.listdir(train_3tape))
+num_ZHK = len(os.listdir(train_ZHK))
+num_ZK2 = len(os.listdir(train_ZK2))
+num_ZK3 = len(os.listdir(train_ZK3))
+num_UND = len(os.listdir(train_UND))
+
+num_STF_val = len(os.listdir(validation_STF))
+num_3tape_val = len(os.listdir(validation_3tape))
+num_ZHK_val = len(os.listdir(validation_ZHK))
+num_ZK2_val = len(os.listdir(validation_ZK2))
+num_ZK3_val = len(os.listdir(validation_ZK3))
+num_UND_val = len(os.listdir(validation_UND))
+
+total_train = num_STF+num_3tape+num_ZHK+num_ZK2+num_ZK3+num_UND
+total_val = num_STF_val+num_3tape_val+num_ZHK_val+num_ZK2_val+num_ZK3_val+num_UND_val
+
+test_steps_per_epoch = np.math.ceil(validation_generator.samples / validation_generator.batch_size)
+
+with tf.device('/gpu:0'):
+    predictions = model.predict_generator(validation_generator, steps=test_steps_per_epoch)
+predicted_classes = np.argmax(predictions, axis=1)
+
+true_classes = validation_generator.classes
+class_labels = list(validation_generator.class_indices.keys()) 
+
+report = classification_report(true_classes, predicted_classes, target_names=class_labels)
+print(report)  
